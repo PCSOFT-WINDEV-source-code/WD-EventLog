@@ -1,0 +1,185 @@
+#To edit and compare internal_properties, use WINDEV integrated tools.
+#Internal properties refer to the properties of controls in windows, reports, etc.
+info :
+ name : CDatabaseLog
+ major_version : 28
+ minor_version : 0
+ type : 4
+ description : ""
+ subtype : 0
+class :
+ identifier : 0x16e175910363e9cd
+ internal_properties : CAAAAAgAAAB2/vstTMCJbS/hlxjFxirSqKvCUuv8YxgpWyl7S3iA
+ code_elements :
+  internal_properties : CAAAAAgAAABm4PVFe9JAHaoZ7pWrapr167xJBrSdz0axAnnnfYhOQaaZf6aFmw+87+hdnze0968KI3y7g0wMbri74fT3L3UE/39pGg==
+  type_code : 10
+  p_codes :
+   -
+     internal_properties : CAAAAAgAAAB7x9IrZod0HeDXuh631E5xT9w90W94WC2YmxyrEnjO8oUrglt144iT1vUidyAgibpSP/GbAgybin34DigWgDYJULKAT/YzaAP9zYbPv39jHLYm+i/hIawDMmHEN3uXDW9TwZRno58JUsjHVmgUU3gW8esXfQ0GuOq92qy9hSwkVQoQbEhM8FvKJ+84/PNg/bwf0UfEPDl82Imdp8h+timmUg6QUXgZRIm+9RhH404ffj9OTQlLznHy
+     code : |1-
+      // Base class for using the logs
+      // Used as base for all the current operations
+      // This class must never be instantiated directly. You must use a derived class according to the type
+      // of log to use
+      
+      CDatabaseLog is Class
+      PROTECTED
+      	m_sLogName 		is string				// Name of the log to use
+      	
+      PUBLIC
+      	// members representing the current record
+      	m_nEveRecNum  		is int 				// Record Number
+      	m_dEveDate  		is date				// Date
+      	m_tEveTime 		is time				// Time
+      	m_sEveSource 		is string				// Source of the event
+      	m_nEveType 			is unsigned int 	// Type of the event
+      	m_sEveUser 	is string				// User linked to the event
+      	m_sEveComputer 	is string				// Name of the computer linked to the event
+      	m_nEveEventID 	is unsigned int	// ID of the event
+      PROTECTED
+      	m_sEveDescription 	is string				// Description of the event
+      	
+      GLOBAL
+      	m_sLastError 	is string				// Last error found
+      	
+      END
+     type : 131072
+  procedures :
+   -
+     name : Constructor
+     procedure_id : 1648728204281965005
+     type_code : 27
+     code : |1+
+      PROCEDURE Constructor(sLogName)
+      :m_sLogName = sLogName
+     type : 589824
+   -
+     name : Destructor
+     procedure_id : 1648728204282030541
+     type_code : 28
+     code : |1+
+      PROCEDURE Destructor()
+      
+     type : 655360
+   -
+     name : bInitialization
+     procedure_id : 1648728204282096077
+     type_code : 12
+     code : |1-
+      // Summary: Function that must be called before any operation is run on the log
+      // The log cannot be consulted if this function fails
+      FUNCTION PUBLIC VIRTUAL bInitialization()
+      
+      // The implementation of this method is found in the derived classes
+      RESULT False
+     type : 458752
+   -
+     name : _FixError
+     procedure_id : 1648728204282161613
+     type_code : 12
+     code : |1+
+      // Summary: Sets the last error
+      PROCEDURE GLOBAL _FixError(sError)
+      
+      ::m_sLastError = sError
+     type : 458752
+   -
+     name : sReturnLastError
+     procedure_id : 1648728204282227149
+     type_code : 12
+     code : |1-
+      // Summary: Returns the last internal error found
+      FUNCTION PUBLIC sReturnLastError()
+      
+      RESULT ::m_sLastError
+     type : 458752
+   -
+     name : _ResetEvent
+     internal_properties : CAAAAAgAAACdKBaZCWPPKQso2GKD7bVF7NIyu+QZ/x0NxddaFhQOIonGj/4HT38mej/cq8/fsl+tiJ2kT/w7lm5MZgdLmFmNMKFuZ5e4EY9sipx1dP2PHpsaLRVmew+MdMfd6uShqy2TPepVOIRluPexYDBAB0DIbJrNG9ZDv0efez7gNtH6OblX8msXvFC81xupo9rkz21U3Vh6IlIyd3qCC0/wKYkzhtilLs+k+l5QNnHkih7jBdUl7Hhzt0xA4Skiu/vOgC0eQtHrOMbFBMTTLxzSea9j+zM9PzBcYVKova3cBA==
+     procedure_id : 1648728204282292685
+     type_code : 12
+     code : |1-
+      // Summary: Reinitializes the information of the current event
+      PROCEDURE PROTECTED _ResetEvent()
+      
+      // members representing the current record
+      :m_nEveRecNum		= 0				// Record Number
+      :m_dEveDate			= "19700101"		// Date
+      :m_tEveTime		= "000000"		// Time
+      :m_sEveSource		= ""				// Source of the event
+      :m_nEveType			= 0				// Type of the event
+      :m_sEveUser	= ""				// User linked to the event
+      :m_sEveComputer	= ""				// Name of the computer linked to the event
+      :m_nEveEventID	= 0 			// ID of the event
+      :m_sEveDescription	= ""				// Description of the event
+     type : 458752
+   -
+     name : bLogReadFirst
+     procedure_id : 1648728204282358221
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC VIRTUAL bLogReadFirst()
+      RESULT False
+     type : 458752
+   -
+     name : bLogReadNext
+     procedure_id : 1648728204282423757
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC VIRTUAL bLogReadNext()
+      RESULT False
+     type : 458752
+   -
+     name : Eve_sReturnDescription
+     procedure_id : 1648728204282489293
+     type_code : 12
+     code : |1-
+      FUNCTION PUBLIC VIRTUAL Eve_sReturnDescription()
+      RESULT ""
+     type : 458752
+   -
+     name : nReturnNbEvent
+     procedure_id : 1648728204282554829
+     type_code : 12
+     code : |1-
+      PROCEDURE  PUBLIC VIRTUAL nReturnNbEvent()
+      RESULT 0
+     type : 458752
+   -
+     name : bAddEvent
+     internal_properties : CAAAAAgAAAD/pLytGzaZxcIMO3vAXMc22BNCZa8cuue7F9hDnuBNdKkpOla+Mqx6qSSDnzUBVsEAZiOpSU0zbCGYKluKoYz/PEexUczUEUkHgVHu5gyGoeDnkVyIT4mvbUw0FTxLOrlRDdpy+hJXShzfh2a/WJqG2W8ztgZM10kEsaM5hrIVU9C0tjr1KSnZGJXgCeEr6SbTPu7ZXN8lDWUM56cBL22x0L5avJXR+QYvbCX4tQ6pEIT8LDwchvM4GFrbcLqP1qVaLXQbWAiGgmCNNSw3k7Cz
+     procedure_id : 1648728204282620365
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC VIRTUAL bAddEvent(eType, sDescription, nEventID)
+      RESULT False
+     type : 458752
+   -
+     name : bReadEvent
+     internal_properties : CAAAAAgAAADiFA8AFdarodY8P753fh2jerOwAgejrtSQn1GbI/BxU4icRhu/WyCGPXoS14hzQ0It9ToIuNxgeC4nXspYbVxVxBJWF2S922pseWSQE/RtDMYfjZYYb/OGC+vK9SIr8WyATxnt174+w2jM12tb/sW/yR7zMsSdXPBGXr2S+EL+XAIhsIxtToqgnsK8sM9LnIMrxtWW1yEdPySoIqFCwB0Va5wX215xdchY9MkpfmfZ8KdOw8p5oZy9tpwovwBuQ18Dl20GeHfceMayRziET/U=
+     procedure_id : 1648728204282685901
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC VIRTUAL bReadEvent(nRecNum)
+      RESULT False
+     type : 458752
+  procedure_templates : []
+  property_templates : []
+ code_parameters :
+  internal_properties : CAAAAAgAAACVGQgYbalU7DKC3oH4ItDrjtcTHXXV/EuH8q0IbhyQlw==
+  original_name : CLogBase
+resources :
+ string_res :
+  identifier : 0x3f56f80c3cbf9314
+  internal_properties : CAAAAAgAAACm76HWfKGWp33VjXInA4cRlqArlgTTA862QGt72W2ld5Y=
+  strings :
+   -
+     text :
+      en-GB : "19700101"
+     index : 0
+   -
+     text :
+      en-GB : "000000"
+     index : 1
+custom_note :
+ internal_properties : CAAAAAgAAABtB9HWVzrXO2+4NDRVK0vmzaNKrCKqH1DBX30lMmGZ

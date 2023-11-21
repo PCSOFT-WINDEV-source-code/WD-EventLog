@@ -1,0 +1,818 @@
+#To edit and compare internal_properties, use WINDEV integrated tools.
+#Internal properties refer to the properties of controls in windows, reports, etc.
+info :
+ name : pEventLog
+ major_version : 28
+ minor_version : 0
+ type : 7
+ description : ""
+ subtype : 0
+procedure_set :
+ identifier : 0x16e1759103c1ec8c
+ internal_properties : CAAAAAgAAABGLu41kG7fjQV3iS4F72qmnKaNh5694reolNKIW0iw
+ code_elements :
+  internal_properties : CAAAAAgAAADaWo+EkzKWaVN6hfLEU3Iz5SW9Wwver/sSe/Ab4S1vBY7D1ZQ5PLlcCBKaqIdAXOcw6uE2r4tK5iMBqge91dy8jn7a154CNNiy
+  type_code : 31
+  p_codes :
+   -
+     internal_properties : CAAAAAgAAAApIOjZVdvYaeNI2YMsQA5VxgASyHNYKmFTrJKodAO3TwyBhe0qyc/bNDu8cXNmpa7jt00bdu/sD5JH28hZrRt+yKSSKHdsihiwIV8yolYpUE4Dpu6gLIqV2FEAKIyirTfA/FuvQWT4a8EjfgWgZYvnPv336SNOf9faH4U4HYumpQ==
+     code : |1-
+      GLOBAL 	
+      	
+      PUBLIC
+      
+      CONSTANT 
+      	
+      	// Type of log to use
+      	eSystem_Log		= 0							// System log (WIN 2000/XP)
+      	eLog_MIN			= eSystem_Log			// Check constants
+      	eLog_MAX			= eSystem_Log
+      	
+      	// Type of system logs
+      	eSystemL_Application	= "Application"					// log of applications
+      	eSystemL_Security		= "Security"					// security log
+      	eSystemL_System		= "System"					// security log
+      	
+      	// Type of information
+      	eEventType_Succes 		= 0
+      	eEventType_Error 		= 1
+      	eEventType_Alert 		= 2
+      	eEventType_Information	= 4
+      	eEventType_AuditSuccess	= 8
+      	eEventType_AuditFailure	= 16
+      	
+      	// DLL containing the definition of the message
+      	eMessageDLL = "MessageMap.dll"
+      END
+      
+      STLogEvent is Structure 
+      	// members representing the current record
+      	m_nEveRecNum		is int					// Record Number
+      	m_dEveDate			is date					// Date
+      	m_tEveTime			is time					// Time
+      	m_sEveSource		is string				// Source of the event
+      	m_nEveType			is unsigned int			// Type of the event
+      	m_sEveUser			is string				// User linked to the event
+      	m_sEveComputer		is string				// Name of the computer linked to the event
+      	m_nEveEventID		is unsigned int			// ID of the event
+      	m_sEveDescription	is string				// Description
+      END
+      
+      PRIVATE
+      gpclLog 	is CDatabaseLog dynamic = Null			// Object for handling logs 
+      gsError 	is string								// string containing the last error
+     type : 720896
+  procedures :
+   -
+     name : bOpenLog
+     procedure_id : 1648728204288126092
+     type_code : 15
+     code : |1-
+      //--------------------------------------------------------------------------------------------------------//
+      //bOpenLog is used to open a log for viewing.
+      //
+      // This log can be:
+      //  - a preset system log accessible by the event observer (Windows 2000 and XP only )
+      //
+      //Syntax:
+      //[ <Result> = ] bOpenLog (<eLogType>, <sLogName>)
+      //
+      //Parameters:
+      //	eLogType: Boolean
+      //	sLogName:
+      
+      //  False otherwise: the error is returned by sErrorLog
+      // <eLogType>: eLog_XXX constant
+      // 		Type of the log to open or create (eSystem_Log)
+      // <sLogName>: String or string constant
+      // 		Name of the log to create/open: eSystemL_XXX
+      // Note: There is no need to open the log to perform additions
+      FUNCTION PUBLIC bOpenLog(eLogType, sLogName)
+      
+      // Check the parameters passed to the function
+      IF (_bCheckParameters_Open(eLogType, sLogName,1) = False) THEN
+      	RESULT False
+      END
+      
+      // create the object for handling logs
+      IF (_bCreateLogObject(eLogType, sLogName)=False) THEN
+      	RESULT False
+      END
+      
+      // Initialize the log (check and open)
+      IF gpclLog:bInitialization() = False THEN
+      	gsError=<§@3f56f16c25ceaf840000§> + gpclLog:sReturnLastError()
+      	_FreeLog()
+      	RESULT False
+      END
+      
+      RESULT True
+     type : 458752
+   -
+     name : _bCheckParameters_Open
+     procedure_id : 1648728204288191628
+     type_code : 15
+     code : |1-
+      //--------------------------------------------------------------------------------------------------------//
+      // Check the parameters passed to the opening function
+      //  - Checks the type of log to open
+      //  - If the log is a system log, checks the type of log to open
+      //
+      // This log can be:
+      //  - a preset system log accessible by the event observer (Windows 2000 and XP only )
+      //
+      //Syntax:
+      //[ <Result> = ] _bCheckParameters_Open (<eLogType>, <sLogName>, <nEventID>)
+      //
+      //Parameters:
+      //	eLogType: Boolean
+      //	sLogName:
+      //	nEventID:
+      
+      // <eLogType>: eLog_XXX constant
+      // 		Type of the log to open or create (eSystem_Log)
+      // <sLogName>: String or string constant
+      FUNCTION PRIVATE _bCheckParameters_Open(eLogType, sLogName, nEventID)
+      
+      // check the type of the log
+      IF eLogType < eLog_MIN OR eLogType > eLog_MAX THEN
+      	gsError = <§@3f56f16c25ceaf840001§>
+      	RESULT False
+      END
+      
+      // check the name of the log for system logs
+      IF eLogType = eSystem_Log THEN
+      	IF sLogName <> eSystemL_Application AND sLogName <> eSystemL_Security AND sLogName <> eSystemL_System THEN
+      		gsError = StringBuild(<§@3f56f16c25ceaf840002§>, sLogName)
+      		RESULT False
+      	END
+      END
+      
+      // Check the Event ID
+      IF nEventID < 0 OR nEventID > 65535 THEN
+      	gsError = <§@3f56f16c25ceaf840004§>
+      	RESULT False
+      END
+      
+      RESULT True
+     type : 458752
+   -
+     name : _bCreateLogObject
+     procedure_id : 1648728204288257164
+     type_code : 15
+     code : |1-
+      //--------------------------------------------------------------------------------------------------------//
+      // Create the derived object used to handle the logs
+      // according to the type of log to open and to its name
+      // Using a derived class allows you to add other types of log files while keeping 
+      // a compatibility of the component
+      // 
+      // Description of input/output parameters of '_bCreateLogObject':
+      //
+      // Syntax:
+      //[<Result> = ] _bCreateLogObject (<eLogType>, <sLogName>)
+      //
+      // Parameters:
+      //	eLogType: constant defining the type of log: eSystem_Log
+      //	sLogName: Name of the log to open: eSystemL_Application, eSystemL_Security, eSystemL_System
+      // Return value:
+      // 	boolean: True if the object was allocated, False otherwise
+      // Notes:
+      //
+      // Example:
+      //--------------------------------------------------------------------------------------------------------//
+      FUNCTION PRIVATE _bCreateLogObject(eLogType, sLogName)
+      
+      // Free the class is it is already allocated
+      IF gpclLog <> Null THEN
+      	_FreeLog()
+      END
+      
+      // According to the type of log
+      SWITCH eLogType
+      	// System log (WIN 2000/XP)
+      	CASE eSystem_Log:									
+      		gpclLog = new CSystemLog(sLogName)
+      	OTHER CASE:
+      		gsError = <§@3f56f16c25ceaf840003§>
+      		RESULT False	
+      END
+      
+      RESULT True
+     type : 458752
+   -
+     name : _FreeLog
+     procedure_id : 1648728204288322700
+     type_code : 15
+     code : |1-
+      // frees the object used to handle the read-only log
+      PROCEDURE PRIVATE _FreeLog()
+      
+      IF gpclLog <> Null THEN
+      	delete gpclLog
+      	gpclLog = Null
+      END
+     type : 458752
+   -
+     name : bReadFirst
+     internal_properties : CAAAAAgAAAC9DGvjX7iMQquRlKoQjRDlQpnAiLnwlHJ+qqufLjUaFLqEIELQGzViIdk0HrZYCaIEPGQgveHea5MpqsllfS8NhqNs9wsQnRlP12r05Tah2wTpIwxruOhye56fGF2ii/EuuvKwSrWwrEH4WZmsag7IILHWVcZR3UeRKlMeMeMUfN4Ge4yWbLXoP5Hq52FFcGGU5oMcvAr/fmoeu09yqU1egGVjgImt/ctMFPeuRHK3OqXdFu5a
+     procedure_id : 1648728204288388236
+     type_code : 15
+     code : |1-
+      // Read the first record of the opened log file
+      // Description of input/output parameters of 'bReadFirst':
+      //
+      // Syntax:
+      //[<Result> = ] bReadFirst ()
+      //
+      // Parameters:
+      //	None
+      // Return value:
+      // 	boolean: returns true if the first record was read. 
+      //  False if no record was found in the log file
+      //
+      // Example:
+      // bret is boolean = bReadFirst()
+      // WHILE bret=True
+      // 	// Process
+      // 	bret = bReadNext()
+      // END
+      FUNCTION PUBLIC bReadFirst()
+      
+      RESULT gpclLog:bLogReadFirst()
+     type : 458752
+   -
+     name : bReadNext
+     internal_properties : CAAAAAgAAAC9DGvjX7iMQquRlKoQjRDlQpnAiLnwlHJ+qqufLjUaFLqEIELQGzViIdk0HrZYCaIEPGQgveHea5MpqsllfS8NhqNs9wsQnRlP12r05Tah2wTpIwxruOhye56fGF2ii/EuuvKwSrWwrEH4WZmsag7IILHWVcZR3UeRKlMeMeMUfN4Ge4yWbLXoP5Hq52FFcGGU5oMcvAr/fmoeu09yqU1egGVjgImt/ctMFPeuRHK3OqXdFu5a
+     procedure_id : 1648728204288453772
+     type_code : 15
+     code : |1-
+      // Summary: Read the next record of the opened log file
+      // Description of input/output parameters of 'bReadFirst':
+      //
+      // Syntax:
+      //[<Result> = ] bReadNext ()
+      //
+      // Parameters:
+      //	None
+      // Return value:
+      // 	boolean: returns True if the next record was read. 
+      //  False if there is no other record to read in the log file
+      //
+      // Example:
+      // bret is boolean = bReadFirst()
+      // WHILE bret=True
+      // 	// Process
+      // 	bret = bReadNext()
+      // END
+      FUNCTION PUBLIC bReadNext()
+      
+      RESULT gpclLog:bLogReadNext()
+     type : 458752
+   -
+     name : Eve_nRecNum
+     procedure_id : 1648728204288519308
+     type_code : 15
+     code : |1-
+      // Summary: Returns the current record number
+      // Description of input/output parameters of 'Eve_nRecNum':
+      //
+      // Syntax:
+      //[<Result> = ] Eve_nRecNum ()
+      //
+      // Parameters:
+      //	None
+      // Return value:
+      // 	integer: Number of the current record
+      
+      FUNCTION PUBLIC Eve_nRecNum()
+      
+      RESULT gpclLog:m_nEveRecNum
+     type : 458752
+   -
+     name : Eve_stDate
+     internal_properties : CAAAAAgAAACyPf5Y38a7kQSky7GGCBNKrRJmIq7lKTYm6KjJoTYaH3CVOzIJABSRPhbi6NZEIZoWrk77pjTZ8/bCeQaEgjTFJe6wTKDEq9Z0LP6ZYb7N/rMomGYq34wr+ZahCaRB0fQQx+hMscJuqf0wK3QFPWBBdjyyf5mytdqdEvGl+gLaEx/RiTuIe+K/VXqMjAGN6IlbDC/OQUo=
+     procedure_id : 1648728204288584844
+     type_code : 15
+     code : |1-
+      // Summary: Returns the date of the current record
+      // Description of input/output parameters of 'Eve_stDate':
+      //
+      // Syntax:
+      //[<Result> = ] Eve_stDate ()
+      //
+      // Return value:
+      // 	date: date of the event
+      
+      PROCEDURE Eve_stDate()
+      RESULT gpclLog:m_dEveDate
+     type : 458752
+   -
+     name : Eve_sSource
+     internal_properties : CAAAAAgAAAByHTc6GPBtDEbO8WlshCskZ1KPYHgqP7noNq1BRSYkVuwMyBhMJiKl5A3kYY5pFyGv6GS6/MKd5IaPNM5iPDbizXSZiYIU+moj4GpVveKjCVzemQx7s375dGPZHkUn2bBYc+lkym4m9dpnF3+I/2Rh/Ma5rWQI5+jSiZWQiywQCUooM9yicqmog4IZxhuMlp4D0AG9L/KF07Z7Q78kOpIcbOT/iA==
+     procedure_id : 1648728204288650380
+     type_code : 15
+     code : |1-
+      // Summary: Returns the source of the event (the name of the software)
+      // Description of input/output parameters of 'Eve_sSource':
+      //
+      // Syntax:
+      //[<Result> = ] Eve_sSource ()
+      //
+      // Return value:
+      // 	ANSI string: name of the application that wrote the event into the log
+      
+      PROCEDURE Eve_sSource()
+      
+      RESULT gpclLog:m_sEveSource
+     type : 458752
+   -
+     name : Eve_stTime
+     internal_properties : CAAAAAgAAADAayx6fGwPyebmGy1qqhsua8AMHErvgR58dtgVfZj690LPYdSZ3uRNjDTm0HYSZdqwwLwlLkJZs+wYCV4EEATZg/yaigS2wzqq0s5SXNU+be7DKSVtNsNQLIEs7iOsNhdTojFD5PmFvvDrpuWsYKkINQOPIqideI9YhSQ21Vn3bibomhK/PmXQpAED6UwsvdQCqk0g85g=
+     procedure_id : 1648728204288715916
+     type_code : 15
+     code : |1-
+      // Summary: Returns the time of the current record
+      // Description of input/output parameters of 'Eve_stTime':
+      //
+      // Syntax:
+      //[<Result> = ] Eve_stTime ()
+      //
+      // Return value:
+      // 	time: time of the event
+      
+      PROCEDURE Eve_stTime()
+      
+      RESULT gpclLog:m_tEveTime
+     type : 458752
+   -
+     name : Eve_sUser
+     internal_properties : CAAAAAgAAAC4irx2GRdTb938NGaZ/Pcb9uyJqugrv6sDAP5dUR1odLotw6Z4t7dRGT2/FjdOPKZTPMI5vb4R5cSgU7TjkAgCkdHX0d4zOPffTk/DDwL+cKBQX2HquTuL9rd4GWq19pBf45sP1Q4Hb9xT1Jy5Vxt7pUZr2EcQnvQa4/hJStwlgSwj3AKEa92Hxgd3wj/h9Jul6SglHQ==
+     procedure_id : 1648728204288781452
+     type_code : 15
+     code : |1-
+      // Summary: Returns the name of the user who wrote the current event
+      //
+      // Syntax:
+      //[<Result> = ] Eve_sUser ()
+      //
+      // Return value:
+      // 	ANSI string: name of the user
+      
+      PROCEDURE Eve_sUser()
+      
+      RESULT gpclLog:m_sEveUser
+     type : 458752
+   -
+     name : Eve_sDescription
+     internal_properties : CAAAAAgAAADcAceInpxZk+MxPsMO/SmRrckShiNJEuM3SUZ5+Q9dPnuqb+UUURfJXBO61HBS9wFFrNencZjA1xHDwcLzVFlsOXaig0KsksgTjAsXtZcpDnH+plVXKHh3fPjAUycUJS/QjSC5HIGYk87yYtBA4KTuWkJAIBgdVTp6YD4ntY+E2mzQWt/66cP+o6fQB8udtE32RfUZ3jUKu6TPz9WNBrI2y5Of
+     procedure_id : 1648728204288846988
+     type_code : 15
+     code : |1-
+      // Summary: Returns the full description of the event for the current record
+      //
+      // Syntax:
+      //[<Result> = ] Eve_sDescription ()
+      //
+      // Return value:
+      // 	ANSI string: full description of the event
+      // Notes:
+      // this function interrogates the registry, loads and retrieves the information in the resource DLL of the application
+      // that wrote the event. Therefore, this information must not be displayed during the full load of the log
+      // because it can take quite a long time
+      //
+      PROCEDURE Eve_sDescription()
+      
+      RESULT gpclLog:Eve_sReturnDescription()
+     type : 458752
+   -
+     name : Eve_sComputer
+     internal_properties : CAAAAAgAAAC4irx2GZdTb938NGaZ/Pcb9uyJqugrv6sDAP5dUR1odLotw6Z4t7dRGT2/FjdOPKZTPMI5vb4R5cSgU7TjkAgCkdHX0d4zOPffTs9Dj4J+8CDQ3+FqObsLdjf4meo1dhDfYxuPVY6H71zTVBw515v7JcbrWMeQHnSaY3jJylylAayjXIIE610HRof3Qr9hdJul6SglHQ==
+     procedure_id : 1648728204288912524
+     type_code : 15
+     code : |1-
+      // Summary: Returns the name of the computer where the event was written
+      //
+      // Syntax:
+      //[<Result> = ] Eve_sComputer ()
+      //
+      // Return value:
+      // 	ANSI string: Name of the computer
+      
+      PROCEDURE Eve_sComputer()
+      
+      RESULT gpclLog:m_sEveComputer
+     type : 458752
+   -
+     name : Eve_eType
+     internal_properties : CAAAAAgAAACSPVfamFBZvMYG0QEMlPPstyJH0ZiqQ13yeFm3xyAKnDLmaozMNnYpfie4R7x/bT81Yv4+LBLJgGQ9PABcCgAUG05PkT5oPtqVYgLvJ6j1M148TNOswnHq9RSURVoqThun8njHbzHl+m9UOhZlEtXQz9m4sCFLJqmDwiTbxBtN9EE/FpvbCTyFTKOQQaTbc6m3NOUJk1bhp9rXt2vgelK8jIQf6A==
+     procedure_id : 1648728204288978060
+     type_code : 15
+     code : |1-
+      // Summary: Returns the type of event written into the current record
+      //
+      // Syntax:
+      //[<Result> = ] Eve_eType ()
+      //
+      // Return value:
+      // 	unsigned 4-byte integer: Value of the event type: constant = eEventType_XXX
+      
+      PROCEDURE Eve_eType()
+      
+      RESULT gpclLog:m_nEveType
+     type : 458752
+   -
+     name : Eve_nEventID
+     internal_properties : CAAAAAgAAACfdT/JOL1r5kUDRAvJXVs7zw9xlxcGtgIlmrKXLTknUS6+Ne5UWHTUqM3tTsU46PI7pI/+rjrB17iUsq/K5Wkc978fJzI5/DGszIw3SfVvh2m92RZSg2PxrIxQMHH3F5bblaxUsJxplKjkKLmsxxB59eK2n1q2GCUATn5yj+RqC+UD1Vi6vyJ+Vh0B8QFmtodJmone0OS3CXp8GWsGVBCCzmdl6TarXy5qwFpg3iBUynKG
+     procedure_id : 1648728204289043596
+     type_code : 15
+     code : |1-
+      // Summary: Returns the ID of the event used to retrieve its description in the resource DLL of the application
+      // that wrote the event
+      //
+      // Syntax:
+      //[<Result> = ] Eve_nEventID ()
+      //
+      // Return value:
+      // 	unsigned 4-byte integer: ID of the event
+      // Notes:
+      // The low byte of this value returns the number of the message to display
+      PROCEDURE Eve_nEventID()
+      
+      RESULT gpclLog:m_nEveEventID
+     type : 458752
+   -
+     name : sReturnError
+     procedure_id : 1648728204289109132
+     type_code : 15
+     code : |1-
+      // Summary: Returns the last error
+      //
+      // Syntax:
+      //[<Result> = ] sReturnError ()
+      //
+      // Parameters:
+      //	None
+      // Return value:
+      // 	string: Caption of the last error
+      PROCEDURE sReturnError()
+      
+      RESULT gsError
+     type : 458752
+   -
+     name : CloseLog
+     procedure_id : 1648728204289174668
+     type_code : 15
+     code : |1+
+      // Summary: Close the log currently used
+      //
+      // Syntax:
+      //CloseLog ()
+      //
+      // Notes:
+      // CloseLog can be called here even if no log was opened
+      PROCEDURE CloseLog()
+      
+      _FreeLog()
+      _RegistryDeleteIfFound(ProjectInfo())
+     type : 458752
+   -
+     name : nReturnNbEvent
+     procedure_id : 1648728204289240204
+     type_code : 15
+     code : |1-
+      // Summary: Returns the number of records (events) found in the opened system log
+      //
+      // Syntax:
+      //[<Result> = ] nReturnNbEvent ()
+      //
+      // Return value:
+      // 	integer: Number of records
+      
+      PROCEDURE nReturnNbEvent()
+      
+      RESULT gpclLog:nReturnNbEvent()
+     type : 458752
+   -
+     name : bAddEvent
+     internal_properties : CAAAAAgAAABXgr27xMOO+4bDVu3+vsyhQ1ggaSTkzJX6MP4R4JjXyzskxuMAIpy6lEZFYoLsfHR4l8oLGaVr0xFG7l2alSxfKSKU0137qU7E4yY5Pdj4rFHALUb0NX8AHHaR09PJBulOiFEphx3yGnpByxaCl1LAlZeP5sO9ezHSu4tt11ZybLmNjWBWS1gNyUvRISD1q46u7gOE2D0IH85BWCziEsB3mxfcsoqPYXMD+ninRZtL5h8SLQSSmXfpb8nd9LoqJmSAiAgSLvLeXw==
+     procedure_id : 1648728204289305740
+     type_code : 15
+     code : |1-
+      // Summary: Adds an event to the log
+      // Records can only be added to the System Application log 
+      // The addition is independent of the read operation, no need to open the log with bOpenLog
+      
+      // Description of input/output parameters of 'bAddEvent':
+      //
+      // Syntax:
+      //[ <Result> = ] bAddEvent (<eLogType>, <eType>, <sDescription>, <nEventID>)
+      //
+      // Parameters:
+      //	eLogType: eLog_XXX constant
+      //	eType:
+      //	sDescription: String indicating the details of the event to add
+      //	nEventID: <specify the role of nEventID>
+      // Return value:
+      // 	boolean: True if the record was added, False otherwise
+      
+      // <sSourceName>: String or string constant
+      // 		Name of the source for the event to add
+      // <eType>: Type of event to add: constant = eEventType_XXX
+      FUNCTION PUBLIC bAddEvent(eLogType, eType, sDescription, nEventID)
+      
+      // Check the parameters passed to the function
+      IF (_bCheckParameters_Open(eLogType, eSystemL_Application,nEventID) = False) THEN
+      	RESULT False
+      END
+      
+      IF eLogType<> eSystem_Log THEN
+      	gsError = <§@3f56f16c25ceaf840003§>
+      	RESULT False
+      END
+      
+      IF InTestMode()=False AND InAutomaticTestMode()=False THEN
+      	// Is the DLL found?
+      	IF NOT fFileExist(fExeDir()+"/"+eMessageDLL) THEN
+      		gsError = StringBuild(<§@3f56f16c25ceaf840005§>+fExeDir()+").",eMessageDLL)
+      		RESULT False
+      	END
+      END
+      
+      // Object used to handle the log
+      clWriteOpLog is CDatabaseLog dynamic = Null
+      
+      //Is the application referenced in the registry?
+      IF _RegistryCreateIfNotFound(ProjectInfo(),fExeDir()+"\"+eMessageDLL) THEN
+      	// create the object for handling logs
+      	clWriteOpLog = new CSystemLog(ProjectInfo())
+      ELSE
+      	gsError = <§@3f56f16c25ceaf840006§>+CR+CR+<§@3f56f16c25ceaf840007§>
+      	RESULT False
+      END
+      
+      // Add the event
+      bRet is boolean = clWriteOpLog:bAddEvent(eType, sDescription, nEventID)
+      // If a problem occurs
+      IF bRet = False THEN
+      	gsError=<§@3f56f16c25ceaf840000§> + gpclLog:sReturnLastError()
+      END
+      
+      // Frees the object used to handle the log
+      delete clWriteOpLog
+      clWriteOpLog = Null
+      
+      // returns the result
+      RESULT bRet
+     type : 458752
+   -
+     name : bReadEvent
+     procedure_id : 1648728204289371276
+     type_code : 15
+     code : |1-
+      // Summary: Reads a specific record in the log (according to its record number)
+      //
+      // Syntax:
+      //[<Result> = ] bReadEvent (<nRecNum>)
+      //
+      // Parameters:
+      //	nRecNum: Record number returned by Eve_nRecNum
+      // Return value:
+      // 	boolean: True if the record was read, False otherwise
+      
+      FUNCTION PUBLIC bReadEvent(nRecNum)
+      
+      RESULT gpclLog:bReadEvent(nRecNum)
+     type : 458752
+   -
+     name : _RegistryCreateIfNotFound
+     procedure_id : 1648728204289436812
+     type_code : 15
+     code : |1-
+      // Summary: <specify the action of the procedure>
+      // Syntax:
+      //[ <Result> = ] _RegistryCreateIfNotFound (<sAplicationName> is ANSI string, <sDLLPath> is ANSI string)
+      //
+      // Parameters:
+      //	sAplicationName (ANSI string): <specify the role of sAplicationName>
+      //	sDLLPath (ANSI string): <specify the role of sDLLPath>
+      // Return value:
+      // 	boolean: // 	None
+      //
+      // Example:
+      // Indicate an example.
+      //
+      PROCEDURE PRIVATE _RegistryCreateIfNotFound(sAplicationName is string, sDLLPath is string)
+      
+      // Variables
+      sKey      is string
+      ResRead is string
+      ResExecute is boolean
+      
+      // Initialization
+      sKey = "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Eventlog\Application"
+      
+      // The key is created if it does not exist
+      IF NOT RegistryExist(sKey+"\"+sAplicationName) THEN
+      	// Create the key
+      	IF NOT RegistryCreateKey(sKey+"\"+sAplicationName) THEN
+      		RESULT False	
+      	END
+      	
+      	// Fill the DLL
+      	IF NOT RegistrySetValue(sKey+"\"+sAplicationName,"EventMessageFile",sDLLPath) THEN
+      		RESULT False
+      	END
+      ELSE
+      	// Check whether the DLL is filled, otherwise it is filled
+      	ResRead = RegistryQueryValue(sKey+"\"+sAplicationName, "EventMessageFile", ResExecute)
+      	
+      	IF ResExecute THEN
+      		IF ResRead = sDLLPath THEN
+      			RESULT True
+      		ELSE
+      			RegistrySetValue(sKey+"\"+sAplicationName,"EventMessageFile",sDLLPath)
+      		END
+      	ELSE
+      		IF NOT RegistrySetValue(sKey+"\"+sAplicationName,"EventMessageFile",sDLLPath) THEN
+      			RESULT False
+      		END
+      	END
+      END
+      
+      RESULT True
+     type : 458752
+   -
+     name : _RegistryDeleteIfFound
+     procedure_id : 1648728204289502348
+     type_code : 15
+     code : |1+
+      // Summary: Remove the authorization from the registry for the writing into the event log
+      // Syntax:
+      //[ <Result> = ] _RegistryDeleteIfFound() (<sAplicationName> is ANSI string, <sDLLPath> is ANSI string)
+      //
+      // Parameters:
+      //	sAplicationName (ANSI string): <specify the role of sAplicationName>
+      //	sDLLPath (ANSI string): <specify the role of sDLLPath>
+      // Return value:
+      // 	boolean: // 	None
+      //
+      // Example:
+      // Indicate an example.
+      //
+      PROCEDURE PRIVATE _RegistryDeleteIfFound(sAplicationName is string)
+      
+      // Variables
+      sKey      is string
+      
+      // Initialization
+      sKey = "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Eventlog\Application"
+      
+      // The key is deleted if it exists
+      IF RegistryExist(sKey+"\"+sAplicationName) THEN
+      	// Create the key
+      	IF RegistryDeleteKey(sKey+"\"+sAplicationName)=False THEN
+      		RESULT False	
+      	END
+      END
+      
+      RESULT True
+      
+      
+     type : 458752
+   -
+     name : ServiceReadLogEvent
+     procedure_id : 2189031065697738036
+     type_code : 15
+     code : |1-
+      // Summary: Read an event in the log
+      // Parameters:
+      //	sLogName (ANSI string): Log name
+      //	nRecordID (integer): Record identifier
+      // Return value:
+      // 	None
+      //
+      procédure ServiceReadLogEvent(local sLogName is string,local  nRecordID is int)
+      
+      stAnEvent is STLogEvent
+      
+      // Opens the log
+      if bOpenLog(eSystem_Log, sLogName) = False then
+      	result stAnEvent
+      end
+      
+      
+      // If the record is found
+      if bReadEvent(nRecordID) = True then
+      	
+      	stAnEvent.m_nEveRecNum			= Eve_nRecNum()
+      	stAnEvent.m_dEveDate			= Eve_stDate()
+      	stAnEvent.m_tEveTime			= Eve_stTime()
+      	stAnEvent.m_sEveSource			= Eve_sSource()
+      	stAnEvent.m_nEveType			= gpclLog.m_nEveType
+      	stAnEvent.m_sEveUser			= Eve_sUser()
+      	stAnEvent.m_sEveComputer		= Eve_sComputer()
+      	stAnEvent.m_nEveEventID			= Eve_nEventID()
+      	stAnEvent.m_sEveDescription		= Eve_sDescription()
+      	
+      	result stAnEvent
+      end
+      
+      // Return element
+      result stAnEvent
+     type : 458752
+   -
+     name : ServiceSearchLogEvent
+     procedure_id : 2189031069992771571
+     type_code : 15
+     code : |1+
+      // Summary: Search in the log
+      // Parameters:
+      //	sSearch (ANSI string): Name of log to search in
+      //	sSearch (ANSI string): Search to perform
+      // Return value:
+      // 	array: Save log
+      //
+      procédure ServiceSearchLogEvent(local sLogName is string,local  sSearch is string)
+      
+      arrEventList is array of STLogEvent
+      
+      // Opens the log
+      if bOpenLog(eSystem_Log, sLogName) = False then
+      	result arrEventList
+      end
+      
+      i		is int		= 1
+      // Browse Loop: bRet=False if there is no other record to read
+      bRet	is boolean	= bReadFirst()
+      while bRet=True
+      	
+      	// If the sought element is found, keep the identifier	
+      	if Eve_sSource() [~] sSearch _or_ Eve_sComputer() [~] sSearch _or_ Eve_sUser() [~] sSearch _or_ Eve_sDescription() [~] sSearch _or_ ...
+      		""+Eve_nRecNum() [~] sSearch _or_ ""+Eve_nEventID() [~] sSearch  then
+      		
+      		stAnEvent is STLogEvent
+      		stAnEvent.m_nEveRecNum			= Eve_nRecNum()
+      		stAnEvent.m_dEveDate			= Eve_stDate()
+      		stAnEvent.m_tEveTime			= Eve_stTime()
+      		stAnEvent.m_sEveSource			= Eve_sSource()
+      		stAnEvent.m_nEveType			= gpclLog.m_nEveType
+      		stAnEvent.m_sEveUser			= Eve_sUser()
+      		stAnEvent.m_sEveComputer		= Eve_sComputer()
+      		stAnEvent.m_nEveEventID			= Eve_nEventID()
+      		stAnEvent.m_sEveDescription		= Eve_sDescription()
+      		
+      		arrEventList.Add(stAnEvent)
+      	end
+      	
+      	// Read the next one
+      	bRet = bReadNext()
+      end
+      
+      // Return list of events found
+      result arrEventList
+     type : 458752
+  procedure_templates : []
+  property_templates : []
+ code_parameters :
+  internal_properties : CAAAAAgAAACVGQgYbalU7DKC3oH4ItDrjtcTHXXV/EuH8q0IbhyQlw==
+  original_name : pJournalEvenement
+resources :
+ string_res :
+  identifier : 0x3f56f16c25ceaf84
+  internal_properties : CAAAAAgAAACm76HWfKGWp33VjXInA4cRlqArlgTTA862QGt72W2ld5Y=
+  strings :
+   -
+     text :
+      en-GB : "Error initializing the log: "
+     index : 0
+   -
+     text :
+      en-GB : The type of log is not supported
+     index : 1
+   -
+     text :
+      en-GB : The system log (<%1>) is not a valid system log.
+     index : 2
+   -
+     text :
+      en-GB : This type of log is not supported.
+     index : 3
+   -
+     text :
+      en-GB : The event number must be greater than 0 and less than 65535
+     index : 4
+   -
+     text :
+      en-GB : The %1 DLL is not found in the folder of the executable (
+     index : 5
+   -
+     text :
+      en-GB : Unable to save the application in the registry.
+     index : 6
+   -
+     text :
+      en-GB : Check whether administrator rights have been granted to you.
+     index : 7
+custom_note :
+ internal_properties : CAAAAAgAAABtB9HWVzrXO2+4NDRVK0vmzaNKrCKqH1DBX30lMmGZ

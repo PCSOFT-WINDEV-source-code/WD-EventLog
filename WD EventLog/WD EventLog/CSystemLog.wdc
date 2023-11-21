@@ -1,0 +1,814 @@
+#To edit and compare internal_properties, use WINDEV integrated tools.
+#Internal properties refer to the properties of controls in windows, reports, etc.
+info :
+ name : CSystemLog
+ major_version : 28
+ minor_version : 0
+ type : 4
+ description : ""
+ subtype : 0
+class :
+ identifier : 0x16e17591038debe0
+ internal_properties : CAAAAAgAAAB2/vstTMCJbS/hlxjFxirSqKvCUuv8YxgpWyl7S3iA
+ code_elements :
+  internal_properties : CAAAAAgAAADPT5ypKJHsqcHPpnuvNIluxIboPn6B0NKZyLBXudk3IZY7qWCDYouyBtTMepGWus9yjlXg0bOKsq250s07h9Iw2yZHevnvJ82n
+  type_code : 10
+  p_codes :
+   -
+     internal_properties : CAAAAAgAAAARx3zHPuzlyDjf17fFaJwOu0zfIDVzm7mH0czvu9URCaMHvW7v2wnpKKesDjZSKLVBv0Jv0ZOFCvR9008XAnwncyextidwEOn9hTGORpzhoRNk8hXdlpedheZuSrIh5QDG9CC1SQhhV0GA7yjmHl/UebN8Zoz8mSjxSjqYkBRpvq8zLIe9zKs79mQUItNWiZaXgIan6bNlWWJErzqAIw==
+     code : |1-
+      // internal structure of records for the system logs
+      EVENTLOGRECORD is Structure
+      	nSize 				is unsigned int				// Size of the record
+      	nReserved 			is unsigned int				// Reserve
+      	nRecordNumber 		is unsigned int				// Record Number
+      	nTimeGenerated 		is unsigned int				// Creation date of the record in the log
+      	nTimeWritten 		is unsigned int				// Date of write operation in the log
+      	nEventID 			is unsigned int				// Identifier of the event
+      	nEventType 			is 2-byte unsigned int 	// Type of the event
+      	nNumStrings 		is 2-byte unsigned int 	// Number of strings found in the log at StringOffset position
+      	nEventCategory 		is 2-byte unsigned int 	// Category of the event
+      	nReservedFlags 		is 2-byte unsigned int 	// Reserve
+      	nClosingRecordNumber is unsigned int				// Reserve
+      	nStringOffset 		is unsigned int 				// Offset where the strings associated with this event will be found
+      	nUserSidLength 		is unsigned int				// Size of UserSidOffset
+      	nUserSidOffset 		is unsigned int				// Offset of security identifier
+      	nDataLength 		is unsigned int				// Size of specific data
+      	nDataOffset 		is unsigned int				// Offset of specific data
+      END
+      
+      CONSTANT
+      	// constant to use in the call to ReadEventLog
+      	EVENTLOG_SEQUENTIAL_READ		=1//0X0001	
+      	EVENTLOG_SEEK_READ				=2//0X0002
+      	
+      	EVENTLOG_FORWARDS_READ			=4//0X0004
+      	EVENTLOG_BACKWARDS_READ			=8//0X0008		
+      	
+      	// constant of LoadLibraryEx
+      	LOAD_LIBRARY_AS_DATAFILE		=2//0X0002
+      	// constant of FormatMessage
+      	FORMAT_MESSAGE_IGNORE_INSERTS	=512//0x00000200
+      	FORMAT_MESSAGE_FROM_HMODULE		=2048//0x00000800
+      	FORMAT_MESSAGE_FROM_SYSTEM		=4096//0x00001000
+      	
+      	FORMAT_MESSAGE_ARGUMENT_ARRAY	=8192//0x00002000
+      	
+      END
+      
+      
+      // Class derived from the base class used to handle the system logs
+      CSystemLog is Class
+      PUBLIC 
+      	inhérits of CDatabaseLog
+      	
+      	CONSTANT
+      		sAPIDLL 		= "AdvApi32.dll"
+      		nBUFFERSIZE 	= 65535
+      	END
+      	
+      	
+      PRIVATE
+      	m_nDLLInst 			is system int	// instance of the DLL
+      	m_nLogInst 		is int			// instance of the log file
+      	
+      	m_stEventLog 		is EVENTLOGRECORD	// structure of an event
+      	m_szBuffer 			is string ASCIIZ on ::nBUFFERSIZE	// buffer for reading records
+      	m_nReadOffset 	is int 			// Offset of the record currently read
+      	m_nBytesRead 		is int			// Number of bytes read during the last read operation
+      	
+      	m_sSystemRoot 		is string 			// path of Windows
+      	
+      END
+     type : 131072
+  procedures :
+   -
+     name : Constructor
+     procedure_id : 1648728204284718048
+     type_code : 27
+     code : |1-
+      PROCEDURE Constructor(sLogName)
+      // explicit call to the constructor of the base class
+      Constructor CDatabaseLog(sLogName)
+      
+      :m_nDLLInst 	= 0
+      :m_sSystemRoot 	= ExtractString(SysEnvironment("SystemRoot"), 2, "=")
+     type : 589824
+   -
+     name : Destructor
+     procedure_id : 1648728204284783584
+     type_code : 28
+     code : |1-
+      PROCEDURE Destructor()
+      
+      // closes the log
+      IF :m_nLogInst <> 0 THEN
+      	::API_CloseEventLog(:m_nLogInst)
+      	:m_nLogInst = 0
+      END
+      
+      // Free the DLL used to handle the system logs (if it was loaded)
+      IF (:m_nDLLInst <> 0) THEN
+      	FreeDLL(:m_nDLLInst)
+      	:m_nDLLInst = 0
+      END
+     type : 655360
+   -
+     name : bInitialization
+     procedure_id : 1648728204284849120
+     type_code : 12
+     code : |1-
+      // Summary: Function that must be called before any read operation is run on the log
+      // The log cannot be used if this function fails
+      FUNCTION PUBLIC VIRTUAL bInitialization()
+      
+      // check the version of Windows
+      IF SysWindowsVersion(sysVersionPlatform) <> "NT" THEN
+      	::_FixError(<§$0004§>)
+      	RESULT False
+      END
+      // Load the Api DLL used to handle the system log
+      :m_nDLLInst = LoadDLL(::sAPIDLL)
+      IF :m_nDLLInst = 0 THEN
+      	::_FixError(<§$0005§>+ ::sAPIDLL)
+      	RESULT False
+      END
+      // Open the file used to handle the log
+      :m_nLogInst = ::API_OpenEventLog(:m_sLogName)
+      IF :m_nLogInst = 0 THEN
+      	::_FixError(<§$0006§>+ :m_sLogName)
+      	RESULT False
+      END
+      
+      RESULT True
+     type : 458752
+   -
+     name : API_OpenEventLog
+     procedure_id : 1648728204284914656
+     type_code : 12
+     code : |1-
+      // Summary: Implementing the API function named "OpenEventLog"
+      // This API is used to open a system log
+      FUNCTION GLOBAL API_OpenEventLog(sEventLogName is string)
+      
+      tHandle is unsigned int = API(::sAPIDLL, "OpenEventLogA", Null, sEventLogName)
+      IF tHandle = 0 THEN
+      	::_FixError(<§$0008§>)
+      END
+      
+      RESULT tHandle
+     type : 458752
+   -
+     name : API_CloseEventLog
+     procedure_id : 1648728204284980192
+     type_code : 12
+     code : |1-
+      // Summary: API for closing a system log file
+      PROCEDURE GLOBAL API_CloseEventLog(tEventLog is int)
+      
+      IF API(::sAPIDLL, "CloseEventLog", tEventLog) = False THEN
+      	::_FixError(<§$000a§>)
+      	RESULT False
+      END
+      
+      RESULT True
+     type : 458752
+   -
+     name : _bReadNextRecord
+     internal_properties : CAAAAAgAAACjyHLXNdEmPXk2rnxaDrVOfBr6UbuyXpVh02ytqUBjlwzyRZbUkpCI67dPO2k4UH/ZxRVLMja1kUAEzc6ZiCWoG4CB2cmcls/xf+WYPnj2sbuwqDjgRTtJzDswy8LarPUfqvyDjVMDkKH62LK/6O/e+y0QtG8F5iFrss5RtsJ+IOepiMvRk8YPGjnAF6zw84s/01eNaefFUeF2J6w1KWfWiiSTMBYJHjyyaPpTRfZbW4PJDjk=
+     procedure_id : 1648728204285045728
+     type_code : 12
+     code : |1-
+      // Summary: Read the next record
+      FUNCTION PRIVATE _bReadNextRecord()
+      
+      :m_nReadOffset 	+= :m_stEventLog:nSize
+      :m_nBytesRead 		-= :m_stEventLog:nSize
+      // if valid bytes are found in the buffer, shift and read the record
+      IF :m_nBytesRead > 0 THEN
+      	RESULT :_bReadRecord()
+      	
+      ELSE
+      	// No valid data is found in the buffer: a read operation is performed via the API
+      	nUnused is int
+      	IF ::API_ReadEventLog(:m_nLogInst, ::EVENTLOG_FORWARDS_READ+::EVENTLOG_SEQUENTIAL_READ, 0, &:m_szBuffer, ::nBUFFERSIZE, :m_nBytesRead, nUnused) = True THEN
+      		:m_nReadOffset = 0
+      		// Read the buffer
+      		RESULT :_bReadRecord()
+      	END
+      END
+      
+      RESULT False
+     type : 458752
+   -
+     name : bLogReadFirst
+     internal_properties : CAAAAAgAAAAQMnS+2ew4gOL3GMjoqHKPYKBtqDuV/ZytbJoHr7H84CwhvfpSdcd/+2lvaAVqyBLZRDTdW9A1UwZcD9oN4Cga5+nlodRhCC2potoScI9jWVsNpHQnJi7+LZ5n8Avy+3FOUDi+jm/mTieet/P6VCRQqMOQE+QVKQMdRidAe5ihKbGAh2/nSjPhhyi4zFpbnzvtsWB9tQ==
+     procedure_id : 1648728204285111264
+     type_code : 12
+     code : |1-
+      // Summary: Read the first record (the oldest one)
+      PROCEDURE PUBLIC VIRTUAL bLogReadFirst()
+      
+      // read the number of the oldest record: the first record
+      // Call the API used to initialize the read operation for the oldest record and read the data
+      IF ::API_GetOldestEventLogRecord(:m_nLogInst) < 0 THEN
+      	RESULT False
+      END
+      // reads the buffer (reinitializes the offset to start a new read operation)
+      :m_nReadOffset 	= 0
+      :m_nBytesRead 		= 0
+      :m_stEventLog:nSize = 0
+      
+      RESULT :_bReadNextRecord()	
+     type : 458752
+   -
+     name : API_GetOldestEventLogRecord
+     procedure_id : 1648728204285176800
+     type_code : 12
+     code : |1-
+      FUNCTION GLOBAL API_GetOldestEventLogRecord(tEventLog is int)
+      
+      nNumFirstRec is int
+      IF API(::sAPIDLL, "GetOldestEventLogRecord", tEventLog, &nNumFirstRec) = False THEN
+      	::_FixError(<§$000c§>)
+      	RESULT -1
+      END
+      
+      RESULT nNumFirstRec
+     type : 458752
+   -
+     name : API_ReadEventLog
+     internal_properties : CAAAAAgAAABKckp5a3G5sBa+SfkdT8hAoBr1YfPlJ1Z35fMYC3LxEV6R7jwiitFUb6TkDUkInbeXLNk2WFEzypYD24cK/NWywBAPS+q/t/VKWC/vrfs5WGUi6QQTLGk8aaTpdtFoe26lM9ThqONx0hyt/3lP9zwO6plaiCQmBRUfJ8I6hkHB49cwuwb9Yc8FFznH0p++BQjCNlFN9FuXnaKScK5dkvEt92QDvGElAW5uVKWv13UgIQIBXjknQJ0Kd8SeqCCv0KWP8Sz0ZWO2rMR07GnnKiW7lthQSvTmQQ==
+     procedure_id : 1648728204285242336
+     type_code : 12
+     code : |1-
+      FUNCTION GLOBAL API_ReadEventLog(tEventLog is int, nReadMode is int , nStartOffset is int , pbuffer is int, nMaxBufferSize is int , nBytesRead is int, nMinRequiredBytes )
+      
+      nVal is int = API(::sAPIDLL, "ReadEventLogA", tEventLog, nReadMode, nStartOffset, pbuffer, ::nBUFFERSIZE, &nBytesRead, &nMinRequiredBytes)
+      
+      RESULT (nVal<>0)
+     type : 458752
+   -
+     name : _bReadRecord
+     internal_properties : CAAAAAgAAADfTPu6uzdGitMASoHra1ZEgcEISKzbEIAGMqyUZ2gYQfnFPgORFbGRePXP4DXzHBj21g8hopHPJMiTp03GO+NLW9Tn21jHNUg6QfJveo0KHxgWiXpJqeYeTw3XCoCthQv7wjpaIRBd2J/yZWGwzovGzivYHdMO9aU9qSiJlmhiTQmyCxVWM1QGAXO1PBjPv6p7k0UQrySyDi7gBhZEXBZvIn8UXCQQ75clqlFoex3iAUEr0iuhdXo2fa+eYX2oGLwDFKWnywi6pkIFaVu1IL/Fn59qCTkFntr60ROHksog
+     procedure_id : 1648728204285307872
+     type_code : 12
+     code : |1-
+      // Summary: Read the current record
+      // Initializes the structure given by the APIs and defines the main information of the record
+      // like the record number, the date and time of the event, the source and the computer, ...
+      // Note: don't retrieve the description
+      FUNCTION PRIVATE _bReadRecord()
+      
+      // Read the current record (found in the buffer) to the structure coming from the API
+      Transfer(&:m_stEventLog,(&:m_szBuffer)+:m_nReadOffset,Dimension(:m_stEventLog))
+      // clears the information about the previous record
+      :_ResetEvent()
+      // The structure is initialized: the data found in the structure can be retrieved
+      :m_nEveRecNum 		= :m_stEventLog:nRecordNumber						// Record Number
+      :m_nEveType 		= :m_stEventLog:nEventType							// type of the event
+      :m_nEveEventID 	= :m_stEventLog:nEventID							// ID of the event
+      
+      // the date is given in number of seconds since 01/01/1970 in UTC format
+      // convert it into WINDEV format and correct the time to take the time difference and the summer time into account
+      :_GetUTCDateToLocal( :m_stEventLog:nTimeWritten)			// date of the event
+      
+      // the source and the name of the computer are found in the buffer, after the structure
+      :m_sEveSource 		= :_GetString(Dimension(:m_stEventLog), 1)
+      :m_sEveComputer 	= :_GetString(Dimension(:m_stEventLog)+Length(:m_sEveSource)+1, 1) 			// Name of the computer linked to the event
+      // retrieves the information about the user by interrogating the SID
+      :_GetUser()
+      
+      RESULT True
+     type : 458752
+   -
+     name : _GetUTCDateToLocal
+     procedure_id : 1648728204285373408
+     type_code : 12
+     code : |1+
+      PROCEDURE _GetUTCDateToLocal(nNbSecSince1970)
+      // The date is an integer corresponding to the number of seconds since 01/01/1970
+      // It must be changed to local time via the FILETIME
+      // the FILETIME is a 64-bit integer representing the number of 100-NanoSecond since the UTC (01/01/1601)
+      
+      // retrieves the UTC date in a date-time:
+      stDateTime is datetime = "19700101"
+      stDateTime..Second += nNbSecSince1970
+      
+      // initializes the start UTC date in a date time
+      stUTCDateTime is datetime = "16010101"
+      // calculates the duration in milliseconds between the two dates
+      d is durée = stDateTime-stUTCDateTime
+      
+      // Prepare the FILETIME: multiply by 10000 for the conversion (Milliseconds <-> 100 Nanoseconds)
+      nFileTimeUTC 	is 8-byte unsigned int = d*10000
+      nFileTimeLocal 	is 8-byte unsigned int=0
+      
+      // Call the conversion API
+      API("KERNEL32","FileTimeToLocalFileTime",&nFileTimeUTC,&nFileTimeLocal)
+      
+      // Retrieve the difference between the requested time and the UTC time
+      // nDiff contains the difference between the UTC time and the local time (in milliseconds)
+      nDiff is int = (nFileTimeLocal/10000 - nFileTimeUTC/10000)
+      
+      // Add the number of milliseconds to the requested date to correct the error
+      stDateTime..Millisecond += nDiff
+      
+      // retrieves the local date and time	
+      :m_dEveDate = stDateTime..Date
+      :m_tEveTime = stDateTime..Time
+     type : 458752
+   -
+     name : _GetString
+     procedure_id : 1648728204285438944
+     type_code : 12
+     code : |1-
+      FUNCTION PRIVATE _GetString(nOffset, nNbString=1, sSeparator=CR)
+      
+      nBufferOffset 	is unsigned int  = :m_nReadOffset + nOffset
+      s 				is string
+      sFinal 			is string
+      nbound			is int
+      
+      nbound = nNbString
+      FOR nSubscript = 1 TO nbound
+      	// copies the string
+      	s = StringRetrieve(&:m_szBuffer+nBufferOffset, srASCIIZAddress)
+      	// add a CR character if the destination string is not empty
+      	IF nSubscript > 1 THEN sFinal += sSeparator
+      	sFinal += s
+      	// Next string
+      	nBufferOffset += Length(s)+1
+      END
+      
+      RESULT sFinal
+     type : 458752
+   -
+     name : bLogReadNext
+     procedure_id : 1648728204285504480
+     type_code : 12
+     code : |1-
+      // Summary: Read the next record
+      PROCEDURE PUBLIC VIRTUAL bLogReadNext()
+      
+      RESULT :_bReadNextRecord()
+     type : 458752
+   -
+     name : API_LookupAccountSid
+     procedure_id : 1648728204285570016
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC GLOBAL API_LookupAccountSid(lpSystemName is 4-byte unsigned int, Sid is 4-byte unsigned int, Name_ is 4-byte unsigned int, cbName is 4-byte unsigned int, ReferencedDomainName is 4-byte unsigned int, cbReferencedDomainName is 4-byte unsigned int , peUse is 4-byte unsigned int)
+      
+      IF API(::sAPIDLL,"LookupAccountSidA",lpSystemName,Sid,Name_,cbName,ReferencedDomainName,cbReferencedDomainName,peUse) = False THEN
+      	::_FixError(<§$0013§>)
+      	RESULT False
+      END
+      
+      RESULT True 
+     type : 458752
+   -
+     name : _GetUser
+     procedure_id : 1648728204285635552
+     type_code : 12
+     code : |1-
+      PROCEDURE _GetUser()
+      
+      // Retrieve the SID structure
+      Sid is Structure
+      	na1 is 4-byte int
+      	na2 is 4-byte int
+      	na3 is 4-byte int
+      END
+      
+      // Retrieves the SID structure if it exists
+      IF :m_stEventLog:nUserSidLength > 0 THEN
+      	Sid is Sid
+      	// retrieves the security structure
+      	Transfer(&Sid,(&:m_szBuffer)+:m_nReadOffset+:m_stEventLog:nUserSidOffset,Dimension(Sid))
+      	// Ask for the user name
+      	sUser is string ASCIIZ on 512
+      	nUserSize is int = 512
+      	
+      	sDomain is string ASCIIZ on 512
+      	nDomainSize is int = 512
+      	nSidName is int
+      	IF ::API_LookupAccountSid(Null, &Sid, &sUser, &nUserSize, &sDomain, &nDomainSize, &nSidName) THEN
+      		:m_sEveUser = StringBuild("%1/%2", StringRetrieve(&sDomain, srASCIIZAddress), StringRetrieve(&sUser, srASCIIZAddress))
+      	END
+      END
+     type : 458752
+   -
+     name : Eve_sReturnDescription
+     procedure_id : 1648728204285701088
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC VIRTUAL Eve_sReturnDescription()
+      
+      // Retrieve the array of strings to insert
+      IntTab is array of 0 system int
+      i is int
+      nStringOffset is unsigned int = 0
+      nBound			is int
+      
+      nBound = :m_stEventLog:nNumStrings
+      FOR i=1 TO nBound
+      	s is string = :_GetString(:m_stEventLog:nStringOffset+nStringOffset, 1)
+      	// Enlarge the array of strings
+      	Dimension(IntTab, Dimension(IntTab)+1)
+      	// read the address of the string
+      	IntTab[i] = (&:m_szBuffer)+:m_nReadOffset+:m_stEventLog:nStringOffset+nStringOffset
+      	nStringOffset += Length(StringRetrieve((&:m_szBuffer)+:m_nReadOffset+:m_stEventLog:nStringOffset+nStringOffset, srASCIIZAddress))+1
+      END
+      
+      IF :m_sEveSource <> "" THEN
+      	
+      	// Read the registry key 
+      	// HKEY_LOCAL_MACHINE/SYSTEM/CurrentControlSet/Services/EventLog/ <Log Name> / <Source Name> /EventMessageFile
+      	// if this key is found: open the DLL and load the message
+      	// Then, call StringBuild with the message data to get the full message
+      	sDLLPath is string = RegistryQueryValue("HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\EventLog\"+:m_sLogName+"\"+:m_sEveSource, "EventMessageFile")
+      	// If a DLL is found
+      	IF sDLLPath <>"" THEN
+      		// Replace %SystemRoot% by the string of the environment PATH
+      		sDLLPath = Replace(sDLLPath, "%SystemRoot%", :m_sSystemRoot)
+      		// opens the DLL to get its resources
+      		tHandle is int = ::API_LoadLibraryEx(sDLLPath, Null, ::LOAD_LIBRARY_AS_DATAFILE)
+      		// If the resource DLL is loaded: the message can be retrieved
+      		IF tHandle <> 0 THEN
+      			// Loads the message: the message ID is given by EventID of the structure
+      			sMessage is string ASCIIZ on 1000000
+      			
+      			IF ::API_FormatMessage(	::FORMAT_MESSAGE_FROM_HMODULE+::FORMAT_MESSAGE_FROM_SYSTEM+::FORMAT_MESSAGE_ARGUMENT_ARRAY,...
+      				tHandle, :m_stEventLog:nEventID, 0, &sMessage, 1000000, &IntTab) > 0 THEN
+      				// The message is formatted
+      				:m_sEveDescription = sMessage
+      			END
+      			// frees the resource DLL
+      			::API_FreeLibrary(tHandle)	
+      		END
+      	END
+      END
+      
+      IF :m_sEveDescription = "" THEN
+      	nBound = :m_stEventLog:nNumStrings
+      	// Concatenate the additional log information
+      	FOR i=1 TO nBound
+      		IF i>1 THEN :m_sEveDescription += " , "
+      		:m_sEveDescription += StringRetrieve(IntTab[i],srASCIIZAddress)
+      	END
+      END
+      
+      RESULT :m_sEveDescription
+     type : 458752
+   -
+     name : API_LoadLibraryEx
+     procedure_id : 1648728204285766624
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC GLOBAL API_LoadLibraryEx(lpCapFileName is string, tFile is int, dwFlags is int)
+      
+      tHandle is unsigned int = API("KERNEL32","LoadLibraryExA",lpCapFileName,tFile,dwFlags)
+      IF tHandle = 0 THEN
+      	::_FixError(<§$001b§>)
+      END
+      
+      RESULT tHandle 
+     type : 458752
+   -
+     name : API_FreeLibrary
+     procedure_id : 1648728204285832160
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC GLOBAL API_FreeLibrary(tHandle is int)
+      
+      API("KERNEL32","FreeLibrary", tHandle)
+     type : 458752
+   -
+     name : API_FormatMessage
+     procedure_id : 1648728204285897696
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC GLOBAL API_FormatMessage(dwFlags is int , lpSource is int ,dwMessageID is unsigned int ,dwLanguageID is int ,lpBuffer is 4-byte unsigned int ,nSize is int, Arguments is 4-byte unsigned int)
+      
+      IF API("KERNEL32","FormatMessageA",dwFlags,lpSource,dwMessageID,dwLanguageID,lpBuffer,nSize,Arguments) = False THEN
+      	::_FixError(<§$001e§>)
+      	RESULT False
+      END
+      
+      RESULT True
+     type : 458752
+   -
+     name : Api_GetLastError
+     procedure_id : 1648728204285963232
+     type_code : 12
+     code : |1+
+      PROCEDURE PUBLIC GLOBAL Api_GetLastError()
+      
+      RESULT API("KERNEL32", "GetLastError")
+     type : 458752
+   -
+     name : API_GetLastErrorMessage
+     procedure_id : 1648728204286028768
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC GLOBAL API_GetLastErrorMessage()
+      
+      // Loads the message: the message ID is given by EventID
+      sMessage is string ASCIIZ on 65535
+      nErrorID is int = ::Api_GetLastError()
+      ::API_FormatMessage( ::FORMAT_MESSAGE_FROM_SYSTEM+::FORMAT_MESSAGE_IGNORE_INSERTS, Null, nErrorID, 0, &sMessage, 65535, Null)
+      
+      RESULT sMessage
+     type : 458752
+   -
+     name : nReturnNbEvent
+     procedure_id : 1648728204286094304
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC VIRTUAL nReturnNbEvent()
+      
+      RESULT ::API_GetNumberOfEventLogRecords(:m_nLogInst)
+     type : 458752
+   -
+     name : API_GetNumberOfEventLogRecords
+     procedure_id : 1648728204286159840
+     type_code : 12
+     code : |1-
+      FUNCTION PUBLIC GLOBAL API_GetNumberOfEventLogRecords(tHandle is int)
+      
+      nRecNb is unsigned int
+      IF API(::sAPIDLL, "GetNumberOfEventLogRecords", tHandle, &nRecNb) = True THEN RESULT nRecNb
+      
+      RESULT 0
+     type : 458752
+   -
+     name : bAddEvent
+     procedure_id : 1648728204286225376
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC VIRTUAL bAddEvent(eType, sDescription, nEventID)
+      
+      bRet is boolean = False
+      // check the version of Windows
+      IF SysWindowsVersion(sysVersionPlatform) <> "NT" THEN
+      	::_FixError(<§$0004§>)
+      	RESULT False
+      END
+      // Load the Api DLL used to handle the system log if it is not already opened
+      IF :m_nDLLInst = 0 THEN
+      	:m_nDLLInst = LoadDLL(::sAPIDLL)
+      	IF :m_nDLLInst = 0 THEN
+      		::_FixError(<§$0005§>+ ::sAPIDLL)
+      		RESULT False
+      	END
+      END
+      
+      // Opens the system file named "Application" in write mode
+      nHandle is int = ::API_RegisterEventSource(Null, :m_sLogName)
+      IF nHandle <> 0 THEN
+      	// changes the type into the proper format
+      	wType is 2-byte unsigned int = eType
+      	nEvent is 2-byte unsigned int = nEventID
+      	// Adds the record into the log
+      	bRet = ::API_ReportEvent(nHandle, wType, 0, nEvent, Null, 1, 0, sDescription, Null)
+      	// Closes the system log
+      	::API_DeregisterEventSource(nHandle)
+      END
+      
+      // returns the result of the addition
+      RESULT bRet
+     type : 458752
+   -
+     name : API_RegisterEventSource
+     procedure_id : 1648728204286290912
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC GLOBAL API_RegisterEventSource(lpUNCServerName is string, lpSourceName is string)
+      
+      tHandle is unsigned int = API(::sAPIDLL, "RegisterEventSourceA", lpUNCServerName, lpSourceName)
+      IF tHandle = 0 THEN
+      	::_FixError(<§$0022§>)
+      END
+      
+      RESULT tHandle
+     type : 458752
+   -
+     name : API_DeregisterEventSource
+     procedure_id : 1648728204286356448
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC GLOBAL API_DeregisterEventSource(tHandle is int)
+      
+      IF API(::sAPIDLL, "DeregisterEventSource", tHandle) = False THEN
+      	::_FixError(<§$0024§>)
+      	RESULT False
+      END
+      
+      RESULT True
+     type : 458752
+   -
+     name : API_ReportEvent
+     procedure_id : 1648728204286421984
+     type_code : 12
+     code : |1-
+      PROCEDURE PUBLIC GLOBAL API_ReportEvent(tEventLog is int,wType is 2-byte unsigned int,wCategory is int, nEventID is 2-byte unsigned int, lpUserSid is int,wNumStrings is int,dwDataSize is int,lpStrings is string,lpRawData is int )
+      
+      // prepare the parameters that must be passed to the API
+      sDesc 	is string = lpStrings
+      Tab1 	is array of 1 system int
+      Tab1[1] = &sDesc
+      
+      IF API(::sAPIDLL,"ReportEventA",tEventLog,wType,wCategory,nEventID,lpUserSid,wNumStrings,dwDataSize,&Tab1,lpRawData) = False THEN
+      	::_FixError(::API_GetLastErrorMessage())
+      	RESULT False
+      END
+      
+      RESULT True
+     type : 458752
+   -
+     name : bReadEvent
+     internal_properties : CAAAAAgAAABVpUpxRrPbbXANr95zu9x8Ou2V/x4dyWzdqOY3ikO/tJ6bIy/Tmp1GoELZD5UHOi0rOi6sozgHFY4Ox1GftEUkwAhCow1el2IvDJ0VG72S9ZqDFC9iZBMMK+52hbjUqOFr9nSLdSvdKn8c/HhHcEtKR1kImmkD3hkzPjojAtacZbBIJfb8RHZ/TeQh+U9loP+hy1cu
+     procedure_id : 1648728204286487520
+     type_code : 12
+     code : |1-
+      // Summary: Read a record by using the record number
+      PROCEDURE PUBLIC VIRTUAL bReadEvent(nRecNum)
+      
+      // perform a read operation via the API
+      nUnused is int
+      :m_nReadOffset = 0
+      :m_nBytesRead = 0
+      IF ::API_ReadEventLog(:m_nLogInst, ::EVENTLOG_SEEK_READ+::EVENTLOG_FORWARDS_READ, nRecNum, &:m_szBuffer, ::nBUFFERSIZE, :m_nBytesRead, nUnused) = True THEN
+      	// Read the buffer
+      	RESULT :_bReadRecord()
+      END
+      
+      s is string = ::API_GetLastErrorMessage()
+      
+      RESULT False
+     type : 458752
+  procedure_templates : []
+  property_templates : []
+ code_parameters :
+  internal_properties : CAAAAAgAAACVGQgYbalU7DKC3oH4ItDrjtcTHXXV/EuH8q0IbhyQlw==
+  original_name : CLogSysteme
+resources :
+ string_res :
+  identifier : 0x3f5703e35f0fd359
+  internal_properties : CAAAAAgAAACm76HWfKGWp33VjXInA4cRlqArlgTTA862QGt72W2ld5Y=
+  strings :
+   -
+     text :
+      en-GB : AdvApi32.dll
+     index : 0
+   -
+     text :
+      en-GB : SystemRoot
+     index : 1
+   -
+     text :
+      en-GB : =
+     index : 2
+   -
+     text :
+      en-GB : NT
+     index : 3
+   -
+     text :
+      en-GB : This version of Windows does not allow you to handle the system logs.
+     index : 4
+   -
+     text :
+      en-GB : "Unable to load the DLL used to handle the log files: "
+     index : 5
+   -
+     text :
+      en-GB : "Unable to load the system log: "
+     index : 6
+   -
+     text :
+      en-GB : OpenEventLogA
+     index : 7
+   -
+     text :
+      en-GB : Error while running the OpenEventLog API
+     index : 8
+   -
+     text :
+      en-GB : CloseEventLog
+     index : 9
+   -
+     text :
+      en-GB : Error while running the CloseEventLog API
+     index : 10
+   -
+     text :
+      en-GB : GetOldestEventLogRecord
+     index : 11
+   -
+     text :
+      en-GB : Error running GetOldestEventLogRecord
+     index : 12
+   -
+     text :
+      en-GB : ReadEventLogA
+     index : 13
+   -
+     text :
+      en-GB : "19700101"
+     index : 14
+   -
+     text :
+      en-GB : "16010101"
+     index : 15
+   -
+     text :
+      en-GB : KERNEL32
+     index : 16
+   -
+     text :
+      en-GB : FileTimeToLocalFileTime
+     index : 17
+   -
+     text :
+      en-GB : LookupAccountSidA
+     index : 18
+   -
+     text :
+      en-GB : Error running LookupAccountSid
+     index : 19
+   -
+     text :
+      en-GB : "%1/%2"
+     index : 20
+   -
+     text :
+      en-GB : HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\EventLog\
+     index : 21
+   -
+     text :
+      en-GB : \
+     index : 22
+   -
+     text :
+      en-GB : EventMessageFile
+     index : 23
+   -
+     text :
+      en-GB : "%SystemRoot%"
+     index : 24
+   -
+     text :
+      en-GB : " , "
+     index : 25
+   -
+     text :
+      en-GB : LoadLibraryExA
+     index : 26
+   -
+     text :
+      en-GB : Error running LoadLibraryEx
+     index : 27
+   -
+     text :
+      en-GB : FreeLibrary
+     index : 28
+   -
+     text :
+      en-GB : FormatMessageA
+     index : 29
+   -
+     text :
+      en-GB : Error while running the FormatMessage API
+     index : 30
+   -
+     text :
+      en-GB : GetLastError
+     index : 31
+   -
+     text :
+      en-GB : GetNumberOfEventLogRecords
+     index : 32
+   -
+     text :
+      en-GB : RegisterEventSourceA
+     index : 33
+   -
+     text :
+      en-GB : Error while running the RegisterEventSource API
+     index : 34
+   -
+     text :
+      en-GB : DeregisterEventSource
+     index : 35
+   -
+     text :
+      en-GB : Error running DeregisterEventSource
+     index : 36
+   -
+     text :
+      en-GB : ReportEventA
+     index : 37
+custom_note :
+ internal_properties : CAAAAAgAAABtB9HWVzrXO2+4NDRVK0vmzaNKrCKqH1DBX30lMmGZ
